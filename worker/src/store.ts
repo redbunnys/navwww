@@ -60,6 +60,14 @@ export async function readConfig(db: D1Database, key: string): Promise<string | 
   return row?.value ?? null
 }
 
+export async function updatePassword(db: D1Database, userId: string, hash: string, salt: string): Promise<void> {
+  await db.prepare('UPDATE users SET password_hash = ?, salt = ? WHERE id = ?').bind(hash, salt, userId).run()
+}
+
+export async function updateUsername(db: D1Database, userId: string, username: string): Promise<void> {
+  await db.prepare('UPDATE users SET username = ? WHERE id = ?').bind(username, userId).run()
+}
+
 export async function writeConfig(db: D1Database, key: string, value: string): Promise<void> {
   await db
     .prepare('INSERT INTO app_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')

@@ -85,6 +85,22 @@ export const api = {
     return request<{ user: SessionUser }>('/api/auth/me', { token })
   },
 
+  changePassword(token: string, currentPassword: string, newPassword: string) {
+    return request<{ ok: boolean }>('/api/auth/password', {
+      method: 'PUT',
+      body: { currentPassword, newPassword },
+      token,
+    })
+  },
+
+  changeAccount(token: string, username: string, password: string) {
+    return request<{ user: SessionUser }>('/api/auth/account', {
+      method: 'PUT',
+      body: { username, password },
+      token,
+    })
+  },
+
   adminUsers(token: string) {
     return request<{ users: AdminUser[]; allowRegister: boolean }>('/api/admin/users', { token })
   },

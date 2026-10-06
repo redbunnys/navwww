@@ -646,6 +646,7 @@ export default function App() {
           session={session}
           updatedAt={data.updatedAt}
           onUpload={() => void uploadNow()}
+          onUserChange={(user) => setSession({ token: session.token, user })}
           onLogout={logout}
           onClose={() => setAccountOpen(false)}
         />

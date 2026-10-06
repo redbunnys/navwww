@@ -10,6 +10,8 @@ import {
   listUsers,
   readConfig,
   readData,
+  updatePassword,
+  updateUsername,
   writeConfig,
   writeData,
 } from './store'
@@ -26,6 +28,7 @@ const app = new Hono<{ Bindings: Env; Variables: Variables }>()
 
 const MAX_PAYLOAD_BYTES = 1024 * 1024
 const ALLOW_REGISTER_KEY = 'allow_register'
+const USERNAME_RE = /^[A-Za-z0-9_.-]{3,24}$/
 
 app.use('*', async (c, next) => {
   const configured = (c.env.ALLOWED_ORIGINS ?? '*')
@@ -84,7 +87,7 @@ app.post('/api/auth/register', async (c) => {
   const body = await c.req.json().catch(() => null)
   const { username, password } = readBody(body)
 
-  if (!/^[A-Za-z0-9_.-]{3,24}$/.test(username)) {
+  if (!USERNAME_RE.test(username)) {
     return c.json({ error: '用户名需为 3-24 位字母、数字、下划线或点' }, 400)
   }
   if (password.length < 6) {
@@ -134,6 +137,52 @@ app.get('/api/auth/me', requireAuth, async (c) => {
   const row = await findUserById(c.env.DB, c.get('userId'))
   if (!row) return c.json({ error: '账号不存在' }, 404)
   return c.json({ user: { id: row.id, username: row.username, role: row.role } })
+})
+
+app.put('/api/auth/password', requireAuth, async (c) => {
+  const body = (await c.req.json().catch(() => null)) as
+    | { currentPassword?: unknown; newPassword?: unknown }
+    | null
+  const currentPassword = typeof body?.currentPassword === 'string' ? body.currentPassword : ''
+  const newPassword = typeof body?.newPassword === 'string' ? body.newPassword : ''
+
+  if (!currentPassword || !newPassword) return c.json({ error: '请输入当前密码和新密码' }, 400)
+  if (newPassword.length < 6) return c.json({ error: '新密码至少 6 位' }, 400)
+  if (newPassword === currentPassword) return c.json({ error: '新密码不能与当前密码相同' }, 400)
+
+  const row = await findUserById(c.env.DB, c.get('userId'))
+  if (!row) return c.json({ error: '账号不存在' }, 404)
+  if (!(await verifyPassword(currentPassword, row.salt, row.password_hash))) {
+    return c.json({ error: '当前密码不正确' }, 401)
+  }
+
+  const { hash, salt } = await hashPassword(newPassword)
+  await updatePassword(c.env.DB, row.id, hash, salt)
+  return c.json({ ok: true })
+})
+
+app.put('/api/auth/account', requireAuth, async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { username?: unknown; password?: unknown } | null
+  const username = typeof body?.username === 'string' ? body.username.trim() : ''
+  const password = typeof body?.password === 'string' ? body.password : ''
+
+  if (!USERNAME_RE.test(username)) {
+    return c.json({ error: '用户名需为 3-24 位字母、数字、下划线或点' }, 400)
+  }
+  if (!password) return c.json({ error: '请输入当前密码' }, 400)
+
+  const row = await findUserById(c.env.DB, c.get('userId'))
+  if (!row) return c.json({ error: '账号不存在' }, 404)
+  if (row.username === username) return c.json({ error: '新用户名与当前用户名相同' }, 400)
+  if (!(await verifyPassword(password, row.salt, row.password_hash))) {
+    return c.json({ error: '密码不正确' }, 401)
+  }
+  if (await findUser(c.env.DB, username)) {
+    return c.json({ error: '用户名已被占用' }, 409)
+  }
+
+  await updateUsername(c.env.DB, row.id, username)
+  return c.json({ user: { id: row.id, username, role: row.role } })
 })
 
 app.get('/api/admin/users', requireAuth, requireAdmin, async (c) => {

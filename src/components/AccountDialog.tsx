@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Cloud, HardDrive, LogOut, ShieldCheck, Upload, Users } from 'lucide-react'
+import { AtSign, Cloud, HardDrive, KeyRound, Lock, LogOut, ShieldCheck, Upload, Users } from 'lucide-react'
 import { api } from '../data/api'
 import type { AdminUser } from '../data/api'
-import type { Session } from '../data/session'
-import { Button, Modal } from './Modal'
+import type { Session, SessionUser } from '../data/session'
+import { Button, Field, Modal, inputClass } from './Modal'
 import { toast } from './Toaster'
 
 function formatTime(value: number): string {
@@ -16,6 +16,7 @@ export function AccountDialog({
   session,
   updatedAt,
   onUpload,
+  onUserChange,
   onLogout,
   onClose,
 }: {
@@ -23,10 +24,20 @@ export function AccountDialog({
   session: Session
   updatedAt: number
   onUpload: () => void
+  onUserChange: (user: SessionUser) => void
   onLogout: () => void
   onClose: () => void
 }) {
   const isAdmin = session.user.role === 'admin'
+
+  const [panel, setPanel] = useState<'none' | 'account' | 'password'>('none')
+  const [formUser, setFormUser] = useState('')
+  const [formCurrent, setFormCurrent] = useState('')
+  const [formNew, setFormNew] = useState('')
+  const [formConfirm, setFormConfirm] = useState('')
+  const [formError, setFormError] = useState('')
+  const [formBusy, setFormBusy] = useState(false)
+
   const [users, setUsers] = useState<AdminUser[]>([])
   const [allowRegister, setAllowRegister] = useState(true)
   const [loading, setLoading] = useState(false)
@@ -49,6 +60,74 @@ export function AccountDialog({
     if (open && isAdmin) void loadAdmin()
   }, [open, isAdmin, loadAdmin])
 
+  useEffect(() => {
+    if (!open) return
+    setPanel('none')
+    setFormError('')
+    setFormBusy(false)
+  }, [open])
+
+  const openPanel = (next: 'account' | 'password') => {
+    setFormError('')
+    setFormCurrent('')
+    setFormNew('')
+    setFormConfirm('')
+    setFormUser(session.user.username)
+    setPanel((prev) => (prev === next ? 'none' : next))
+  }
+
+  const submitAccount = async () => {
+    if (formBusy) return
+    const username = formUser.trim()
+    if (username === session.user.username) {
+      setFormError('新用户名与当前用户名相同')
+      return
+    }
+    if (!formCurrent) {
+      setFormError('请输入当前密码确认身份')
+      return
+    }
+    setFormBusy(true)
+    setFormError('')
+    try {
+      const { user } = await api.changeAccount(session.token, username, formCurrent)
+      onUserChange(user)
+      setPanel('none')
+      toast('用户名已更新')
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : '修改失败')
+    } finally {
+      setFormBusy(false)
+    }
+  }
+
+  const submitPassword = async () => {
+    if (formBusy) return
+    if (!formCurrent) {
+      setFormError('请输入当前密码')
+      return
+    }
+    if (formNew.length < 6) {
+      setFormError('新密码至少 6 位')
+      return
+    }
+    if (formNew !== formConfirm) {
+      setFormError('两次输入的新密码不一致')
+      return
+    }
+    setFormBusy(true)
+    setFormError('')
+    try {
+      await api.changePassword(session.token, formCurrent, formNew)
+      setPanel('none')
+      toast('密码已更新')
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : '修改失败')
+    } finally {
+      setFormBusy(false)
+    }
+  }
+
   const toggleRegister = useCallback(async () => {
     if (saving) return
     setSaving(true)
@@ -63,6 +142,8 @@ export function AccountDialog({
       setSaving(false)
     }
   }, [allowRegister, saving, session.token])
+
+  const submit = panel === 'account' ? submitAccount : submitPassword
 
   return (
     <Modal
@@ -117,6 +198,108 @@ export function AccountDialog({
           <Upload className="h-3.5 w-3.5" />
           立即上传当前数据到云端
         </button>
+
+        <div className="space-y-3 rounded-xl border border-black/5 p-3 dark:border-white/10">
+          <p className="flex items-center gap-2 text-xs font-medium">
+            <KeyRound className="h-3.5 w-3.5 text-blue-500" />
+            账号与安全
+          </p>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => openPanel('account')}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-xl border py-2 text-xs transition ${
+                panel === 'account'
+                  ? 'border-blue-400 text-blue-600 dark:text-blue-400'
+                  : 'border-black/5 text-neutral-600 hover:border-blue-400 hover:text-blue-600 dark:border-white/10 dark:text-neutral-300'
+              }`}
+            >
+              <AtSign className="h-3.5 w-3.5" />
+              修改用户名
+            </button>
+            <button
+              type="button"
+              onClick={() => openPanel('password')}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-xl border py-2 text-xs transition ${
+                panel === 'password'
+                  ? 'border-blue-400 text-blue-600 dark:text-blue-400'
+                  : 'border-black/5 text-neutral-600 hover:border-blue-400 hover:text-blue-600 dark:border-white/10 dark:text-neutral-300'
+              }`}
+            >
+              <Lock className="h-3.5 w-3.5" />
+              修改密码
+            </button>
+          </div>
+
+          {panel === 'account' ? (
+            <div className="space-y-2.5">
+              <Field label="新用户名">
+                <input
+                  value={formUser}
+                  onChange={(event) => setFormUser(event.target.value)}
+                  placeholder="3-24 位字母、数字、下划线或点"
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="当前密码">
+                <input
+                  type="password"
+                  value={formCurrent}
+                  onChange={(event) => setFormCurrent(event.target.value)}
+                  placeholder="确认身份"
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+          ) : null}
+
+          {panel === 'password' ? (
+            <div className="space-y-2.5">
+              <Field label="当前密码">
+                <input
+                  type="password"
+                  value={formCurrent}
+                  onChange={(event) => setFormCurrent(event.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="新密码">
+                <input
+                  type="password"
+                  value={formNew}
+                  onChange={(event) => setFormNew(event.target.value)}
+                  placeholder="至少 6 位"
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="确认新密码">
+                <input
+                  type="password"
+                  value={formConfirm}
+                  onChange={(event) => setFormConfirm(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void submit()
+                  }}
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+          ) : null}
+
+          {formError ? (
+            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-600 dark:text-red-400">{formError}</p>
+          ) : null}
+
+          {panel !== 'none' ? (
+            <div className="flex justify-end gap-2">
+              <Button onClick={() => setPanel('none')}>取消</Button>
+              <Button variant="primary" disabled={formBusy} onClick={() => void submit()}>
+                {formBusy ? '保存中…' : '保存'}
+              </Button>
+            </div>
+          ) : null}
+        </div>
 
         {isAdmin ? (
           <div className="space-y-3 rounded-xl border border-black/5 p-3 dark:border-white/10">
