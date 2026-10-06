@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { AtSign, Cloud, HardDrive, KeyRound, Lock, LogOut, ShieldCheck, Upload, Users } from 'lucide-react'
 import { api } from '../data/api'
 import type { AdminUser } from '../data/api'
+import { useCloudStatus } from '../data/offline'
 import type { Session, SessionUser } from '../data/session'
 import { Button, Field, Modal, inputClass } from './Modal'
 import { toast } from './Toaster'
@@ -29,6 +30,7 @@ export function AccountDialog({
   onClose: () => void
 }) {
   const isAdmin = session.user.role === 'admin'
+  const cloud = useCloudStatus()
 
   const [panel, setPanel] = useState<'none' | 'account' | 'password'>('none')
   const [formUser, setFormUser] = useState('')
@@ -175,14 +177,20 @@ export function AccountDialog({
                 </span>
               ) : null}
             </p>
-            <p className="text-xs text-neutral-400">已登录，数据实时同步到云端</p>
+            <p className="text-xs text-neutral-400">
+              {cloud.offline
+                ? '已登录，当前离线，改动会稍后自动同步'
+                : cloud.pending
+                  ? '已登录，有改动正在等待同步'
+                  : '已登录，数据实时同步到云端'}
+            </p>
           </div>
         </div>
 
         <div className="space-y-1.5 rounded-xl bg-neutral-100/70 px-3 py-2.5 text-xs dark:bg-white/5">
           <p className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
             <Cloud className="h-3.5 w-3.5 text-blue-500" />
-            数据来源：云端
+            数据来源：{cloud.offline ? '本机缓存' : '云端'}
           </p>
           <p className="flex items-center gap-2 text-neutral-500 dark:text-neutral-400">
             <HardDrive className="h-3.5 w-3.5" />

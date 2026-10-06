@@ -24,6 +24,12 @@ export class ApiError extends Error {
   }
 }
 
+/** status 为 0 表示请求根本没发出去（断网、DNS 失败等），而不是服务端拒绝 */
+export function isOfflineError(error: unknown): boolean {
+  if (error instanceof ApiError) return error.status === 0
+  return error instanceof TypeError
+}
+
 interface RequestOptions {
   method?: string
   body?: unknown

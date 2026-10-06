@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import {
   BookmarkPlus,
+  CloudOff,
   Database,
   Download,
   Image as ImageIcon,
@@ -17,6 +18,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { FAVORITES_PAGE_ID } from '../types'
 import type { NavData, NavPage, Settings } from '../types'
+import { useCloudStatus } from '../data/offline'
 import type { Session } from '../data/session'
 import { pageIcon } from './icons'
 
@@ -127,6 +129,7 @@ export function Sidebar({
   const [menuOpen, setMenuOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const bookmarkRef = useRef<HTMLInputElement>(null)
+  const cloud = useCloudStatus()
   const ThemeIcon = THEME_META[theme].icon
 
   return (
@@ -186,6 +189,20 @@ export function Sidebar({
           {session ? session.user.username : '登录'}
         </span>
       </button>
+
+      {session && (cloud.offline || cloud.pending) ? (
+        <div
+          title={cloud.offline ? '当前离线，改动保存在本机，联网后自动同步' : '有改动正在等待同步到云端'}
+          className={`mb-1 flex w-full flex-col items-center gap-0.5 rounded-lg px-1 py-1 text-[10px] leading-3 ${
+            cloud.offline
+              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+              : 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+          }`}
+        >
+          <CloudOff className="h-3.5 w-3.5" />
+          <span>{cloud.offline ? '离线' : '待同步'}</span>
+        </div>
+      ) : null}
 
       <div className="flex w-full shrink-0 items-center justify-center gap-0.5 border-t border-black/5 pt-2 dark:border-white/5">
         <button

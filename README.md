@@ -41,6 +41,8 @@ pnpm web:deploy        # 构建并部署前端静态站点到 Cloudflare
   账号面板可修改密码与用户名（都需要输入当前密码确认）
 - 管理员：第一个注册的账号自动成为管理员，可在账号面板里查看全部账号并开关「开放注册」
 - 云同步：登录后自动改用云端数据；若本机已有数据，会询问「合并 / 只用云端 / 用本地覆盖云端」
+- 离线可用：登录状态只存在本机 `localStorage`，断网不会掉登录；云端数据会在本机留一份镜像，
+  断网时照常浏览和编辑，改动先存本机、联网后自动补推云端，侧栏会显示「离线 / 待同步」
 - 云端存储：Cloudflare Workers + D1（SQLite），每个账号一份 JSON，单次上限 1MB
 
 ## 结构
@@ -55,7 +57,8 @@ src/
 │  ├─ defaults.ts          内置分类与书签种子数据
 │  ├─ session.ts           登录状态与 API 地址
 │  ├─ api.ts               云端接口封装
-│  ├─ cloudRepo.ts         云端仓储实现（写入自动合并）
+│  ├─ cloudRepo.ts         云端仓储：本地镜像 + 离线队列 + 联网自动补同步
+│  ├─ offline.ts           云端数据的本地镜像、待同步队列与同步状态
 │  └─ merge.ts             本机与云端数据的合并 / 替换策略
 ├─ hooks/
 │  ├─ useNav.ts            TanStack Query 封装与写入
@@ -85,12 +88,17 @@ public/                     静态资源（默认壁纸）
 - 预设图片来自 `picsum.photos`，需要联网才能显示；本地图片会先压缩到最长边 2400px 再以 data URL 存进 `localStorage`
 - `localStorage` 单站点容量约 5MB，上传图片过多时会保存失败，重要数据建议先导出备份
 - 本地上传的图片壁纸（data URL）不会上传云端，只保留在本机；换设备登录后云端数据里没有这张壁纸
+- 断网时登录状态保留，书签读写走本机镜像；data URL 壁纸可能超出 `localStorage` 配额，
+  镜像写入失败时会自动降级为不存壁纸（不影响书签数据）
+- 断网期间的改动记在待同步队列里，联网后自动补推；退出登录后改动仍留在本机，
+  下次用同一账号登录会自动补同步
 - 云端接口地址：开发默认 `http://127.0.0.1:8787`，线上由 `.env.production` 的 `VITE_API_BASE` 决定
 
 ## 云端同步与部署（Cloudflare）
 
 后端是 Cloudflare Worker（Hono 路由）+ D1（SQLite）。UI 只依赖 `src/data/repo.ts` 的 `NavRepository`
-接口（`load` / `save` / `reset`），未登录用 `localRepository`，登录后切到 `createCloudRepository`，组件无需改动。
+接口（`load` / `save` / `reset`，以及可选的 `flush`），未登录用 `localRepository`，
+登录后切到 `createCloudRepository`，组件无需改动。
 
 线上地址：前端 <https://nav.okrust.com>，接口 <https://nav-api.okrust.com>。
 

@@ -23,9 +23,20 @@ export function useNavScope(): string {
 function useRepository() {
   const session = useSession()
   return useMemo(
-    () => (session ? createCloudRepository(() => session.token) : localRepository),
+    () =>
+      session
+        ? createCloudRepository(() => ({ token: session.token, userId: session.user.id }))
+        : localRepository,
     [session],
   )
+}
+
+/** 联网后把离线期间攒下的改动补推到云端；没有待同步内容时不会发出请求 */
+export function useCloudFlush(): () => void {
+  const repository = useRepository()
+  return useCallback(() => {
+    void repository.flush?.()
+  }, [repository])
 }
 
 export function useNavQuery() {

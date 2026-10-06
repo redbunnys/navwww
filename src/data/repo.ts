@@ -6,6 +6,8 @@ export interface NavRepository {
   load(): Promise<NavData>
   save(data: NavData): Promise<void>
   reset(): Promise<NavData>
+  /** 可选：把离线期间攒下的改动补推到远端，本地仓库不需要 */
+  flush?(): Promise<void>
 }
 
 export const localRepository: NavRepository = {

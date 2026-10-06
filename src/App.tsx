@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Plus, SearchX, Star } from 'lucide-react'
-import { ApiError, api } from './data/api'
+import { ApiError, api, isOfflineError } from './data/api'
 import { createCloudRepository } from './data/cloudRepo'
 import { createEmptyData } from './data/defaults'
 import { mergeNavData, preserveLocalBackground } from './data/merge'
+import { getCloudStatus, setCloudStatus, useCloudStatus } from './data/offline'
 import { getSession, setSession, useSession } from './data/session'
 import type { Session } from './data/session'
 import { loadNav, saveNav } from './data/storage'
-import { cloudScope, navQueryKey, useNavQuery, useResetNav, useUpdateNav, useUpdateSettings } from './hooks/useNav'
+import {
+  cloudScope,
+  navQueryKey,
+  useCloudFlush,
+  useNavQuery,
+  useResetNav,
+  useUpdateNav,
+  useUpdateSettings,
+} from './hooks/useNav'
 import { usePersistentState } from './hooks/usePersistentState'
 import { buildSearchIndex, searchDocs } from './lib/search'
 import { importBookmarkGroups, parseBookmarkHtml } from './lib/bookmarks'
@@ -36,6 +45,10 @@ const ACTIVE_PAGE_KEY = 'nav:active-page'
 const TILE_SIZE_ORDER: Settings['tileSize'][] = ['sm', 'md', 'lg']
 const TILE_SIZE_LABEL: Record<Settings['tileSize'], string> = { sm: '小', md: '中', lg: '大' }
 const THEME_ORDER: Settings['theme'][] = ['light', 'dark', 'system']
+
+function isOfflineNow(): boolean {
+  return !navigator.onLine || getCloudStatus().offline
+}
 
 function applyTheme(theme: Settings['theme']): void {
   const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -73,6 +86,8 @@ export default function App() {
   const update = useUpdateNav()
   const updateSettings = useUpdateSettings()
   const resetNav = useResetNav()
+  const flushCloud = useCloudFlush()
+  const cloudStatus = useCloudStatus()
 
   const [activePageId, setActivePageId] = usePersistentState<string>(ACTIVE_PAGE_KEY, '')
   const [query, setQuery] = useState('')
@@ -116,12 +131,47 @@ export default function App() {
           setSession(null)
           setAccountOpen(false)
           toast('登录已失效，已切回本机数据')
+          return
         }
+        if (err instanceof ApiError && err.status === 0) setCloudStatus({ offline: true })
       })
     return () => {
       alive = false
     }
   }, [session?.token])
+
+  useEffect(() => {
+    if (!session) return
+    const goOnline = () => {
+      setCloudStatus({ offline: false })
+      flushCloud()
+    }
+    const goOffline = () => setCloudStatus({ offline: true })
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    const timer = window.setInterval(flushCloud, 60000)
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+      window.clearInterval(timer)
+    }
+  }, [session, flushCloud])
+
+  const previousStatus = useRef(cloudStatus)
+  useEffect(() => {
+    const previous = previousStatus.current
+    previousStatus.current = cloudStatus
+    if (!session) return
+    if (cloudStatus.offline && !previous.offline) {
+      toast('网络不可用，已切到本机缓存，改动会在联网后自动同步')
+    }
+    if (previous.pending && !cloudStatus.pending && !cloudStatus.offline) {
+      toast('已同步到云端')
+    }
+    if (cloudStatus.error && !cloudStatus.offline && cloudStatus.error !== previous.error) {
+      toast(cloudStatus.error)
+    }
+  }, [cloudStatus, session])
 
   useEffect(() => {
     if (!data || data.pages.length === 0) return
@@ -371,7 +421,9 @@ export default function App() {
         const parts = [`已导入 ${added} 个书签`]
         if (newPages > 0) parts.push(`新增 ${newPages} 个分类`)
         if (skipped > 0) parts.push(`跳过 ${skipped} 个重复`)
-        parts.push(getSession() ? '已同步到云端' : '登录后可同步到云端')
+        parts.push(
+          getSession() ? (isOfflineNow() ? '已保存在本机，联网后自动同步' : '已同步到云端') : '登录后可同步到云端',
+        )
         toast(parts.join('，'))
       } catch {
         toast('导入失败：请选择浏览器导出的收藏夹 HTML 文件')
@@ -392,6 +444,10 @@ export default function App() {
       }
       setSync({ cloud, busy: null })
     } catch (err) {
+      if (isOfflineError(err)) {
+        toast('已登录，当前离线，正在使用本机缓存')
+        return
+      }
       toast(err instanceof Error ? err.message : '读取云端数据失败')
     }
   }, [])
@@ -413,13 +469,13 @@ export default function App() {
         } else {
           result = local
         }
-        await createCloudRepository(() => current.token).save(result)
+        const repository = createCloudRepository(() => ({ token: current.token, userId: current.user.id }))
+        await repository.save(result)
         saveNav(result)
         queryClient.setQueryData(navQueryKey(cloudScope(current.user.id)), result)
         setSync(null)
-        toast(
-          mode === 'merge' ? '已合并并同步到云端' : mode === 'cloud' ? '已改用云端数据' : '已用本地数据覆盖云端',
-        )
+        const label = mode === 'merge' ? '已合并' : mode === 'cloud' ? '已改用云端数据' : '已用本地数据覆盖云端'
+        toast(getCloudStatus().offline ? `${label}，当前离线，联网后自动同步` : `${label}并同步到云端`)
       } catch (err) {
         toast(err instanceof Error ? err.message : '同步失败')
         setSync((prev) => (prev ? { ...prev, busy: null } : prev))
@@ -429,7 +485,10 @@ export default function App() {
   )
 
   const logout = useCallback(() => {
-    if (!window.confirm('退出登录？将切回本机数据，本机数据不会被删除。')) return
+    const message = getCloudStatus().pending
+      ? '还有改动没有同步到云端。退出后会先留在这台设备上，下次登录同一账号会自动补同步。确定退出？'
+      : '退出登录？将切回本机数据，本机数据不会被删除。'
+    if (!window.confirm(message)) return
     setSession(null)
     setAccountOpen(false)
     toast('已退出登录，正在使用本机数据')
@@ -438,12 +497,9 @@ export default function App() {
   const uploadNow = useCallback(async () => {
     const current = getSession()
     if (!current || !data) return
-    try {
-      await createCloudRepository(() => current.token).save(data)
-      toast('已上传到云端')
-    } catch (err) {
-      toast(err instanceof Error ? err.message : '上传失败')
-    }
+    const repository = createCloudRepository(() => ({ token: current.token, userId: current.user.id }))
+    await repository.save(data)
+    toast(getCloudStatus().offline ? '当前离线，已保存在本机，联网后自动同步' : '已上传到云端')
   }, [data])
 
   if (!data || !settings) {
