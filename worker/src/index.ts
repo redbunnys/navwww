@@ -2,7 +2,17 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import type { MiddlewareHandler } from 'hono'
 import { expiryInSeconds, hashPassword, signToken, verifyPassword, verifyToken } from './crypto'
-import { findUser, insertUser, readData, writeData } from './store'
+import {
+  countUsers,
+  findUser,
+  findUserById,
+  insertUser,
+  listUsers,
+  readConfig,
+  readData,
+  writeConfig,
+  writeData,
+} from './store'
 
 export interface Env {
   DB: D1Database
@@ -10,11 +20,12 @@ export interface Env {
   ALLOWED_ORIGINS?: string
 }
 
-type Variables = { userId: string; username: string }
+type Variables = { userId: string; username: string; role: string }
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>()
 
 const MAX_PAYLOAD_BYTES = 1024 * 1024
+const ALLOW_REGISTER_KEY = 'allow_register'
 
 app.use('*', async (c, next) => {
   const configured = (c.env.ALLOWED_ORIGINS ?? '*')
@@ -43,6 +54,14 @@ const requireAuth: MiddlewareHandler<{ Bindings: Env; Variables: Variables }> = 
   await next()
 }
 
+const requireAdmin: MiddlewareHandler<{ Bindings: Env; Variables: Variables }> = async (c, next) => {
+  const row = await findUserById(c.env.DB, c.get('userId'))
+  if (!row) return c.json({ error: '账号不存在' }, 404)
+  if (row.role !== 'admin') return c.json({ error: '需要管理员权限' }, 403)
+  c.set('role', row.role)
+  await next()
+}
+
 function readBody(body: unknown): { username: string; password: string } {
   const input = (body ?? {}) as { username?: unknown; password?: unknown }
   return {
@@ -52,6 +71,14 @@ function readBody(body: unknown): { username: string; password: string } {
 }
 
 app.get('/api/health', (c) => c.json({ ok: true, time: Date.now() }))
+
+app.get('/api/config', async (c) => {
+  const [total, allow] = await Promise.all([
+    countUsers(c.env.DB),
+    readConfig(c.env.DB, ALLOW_REGISTER_KEY),
+  ])
+  return c.json({ allowRegister: total === 0 || allow === '1', hasAdmin: total > 0 })
+})
 
 app.post('/api/auth/register', async (c) => {
   const body = await c.req.json().catch(() => null)
@@ -70,12 +97,19 @@ app.post('/api/auth/register', async (c) => {
   const existing = await findUser(c.env.DB, username)
   if (existing) return c.json({ error: '用户名已被占用' }, 409)
 
+  const total = await countUsers(c.env.DB)
+  const isFirst = total === 0
+  if (!isFirst && (await readConfig(c.env.DB, ALLOW_REGISTER_KEY)) !== '1') {
+    return c.json({ error: '管理员已关闭注册' }, 403)
+  }
+
   const { hash, salt } = await hashPassword(password)
   const id = crypto.randomUUID()
-  await insertUser(c.env.DB, { id, username, hash, salt })
+  const role = isFirst ? 'admin' : 'user'
+  await insertUser(c.env.DB, { id, username, hash, salt, role })
 
   const token = await signToken({ sub: id, name: username, exp: expiryInSeconds(30) }, c.env.JWT_SECRET)
-  return c.json({ token, user: { id, username } })
+  return c.json({ token, user: { id, username, role } })
 })
 
 app.post('/api/auth/login', async (c) => {
@@ -93,12 +127,26 @@ app.post('/api/auth/login', async (c) => {
   if (!ok) return c.json({ error: '用户名或密码不正确' }, 401)
 
   const token = await signToken({ sub: user.id, name: user.username, exp: expiryInSeconds(30) }, c.env.JWT_SECRET)
-  return c.json({ token, user: { id: user.id, username: user.username } })
+  return c.json({ token, user: { id: user.id, username: user.username, role: user.role } })
 })
 
-app.get('/api/auth/me', requireAuth, (c) =>
-  c.json({ user: { id: c.get('userId'), username: c.get('username') } }),
-)
+app.get('/api/auth/me', requireAuth, async (c) => {
+  const row = await findUserById(c.env.DB, c.get('userId'))
+  if (!row) return c.json({ error: '账号不存在' }, 404)
+  return c.json({ user: { id: row.id, username: row.username, role: row.role } })
+})
+
+app.get('/api/admin/users', requireAuth, requireAdmin, async (c) => {
+  const [users, allow] = await Promise.all([listUsers(c.env.DB), readConfig(c.env.DB, ALLOW_REGISTER_KEY)])
+  return c.json({ users, allowRegister: allow === '1' })
+})
+
+app.put('/api/admin/config', requireAuth, requireAdmin, async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { allowRegister?: unknown } | null
+  if (typeof body?.allowRegister !== 'boolean') return c.json({ error: '参数不正确' }, 400)
+  await writeConfig(c.env.DB, ALLOW_REGISTER_KEY, body.allowRegister ? '1' : '0')
+  return c.json({ ok: true, allowRegister: body.allowRegister })
+})
 
 app.get('/api/data', requireAuth, async (c) => {
   const row = await readData(c.env.DB, c.get('userId'))

@@ -2,6 +2,18 @@ import { getApiBase } from './session'
 import type { SessionUser } from './session'
 import type { NavData } from '../types'
 
+export interface AppConfig {
+  allowRegister: boolean
+  hasAdmin: boolean
+}
+
+export interface AdminUser {
+  id: string
+  username: string
+  role: string
+  createdAt: number
+}
+
 export class ApiError extends Error {
   status: number
 
@@ -62,6 +74,26 @@ export const api = {
     return request<{ token: string; user: SessionUser }>('/api/auth/login', {
       method: 'POST',
       body: { username, password },
+    })
+  },
+
+  getConfig() {
+    return request<AppConfig>('/api/config')
+  },
+
+  me(token: string) {
+    return request<{ user: SessionUser }>('/api/auth/me', { token })
+  },
+
+  adminUsers(token: string) {
+    return request<{ users: AdminUser[]; allowRegister: boolean }>('/api/admin/users', { token })
+  },
+
+  adminSetConfig(token: string, allowRegister: boolean) {
+    return request<{ ok: boolean; allowRegister: boolean }>('/api/admin/config', {
+      method: 'PUT',
+      body: { allowRegister },
+      token,
     })
   },
 

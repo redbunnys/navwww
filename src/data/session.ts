@@ -3,6 +3,7 @@ import { useSyncExternalStore } from 'react'
 export interface SessionUser {
   id: string
   username: string
+  role?: string
 }
 
 export interface Session {
@@ -22,7 +23,7 @@ function readSession(): Session | null {
     if (!raw) return null
     const parsed = JSON.parse(raw) as Session
     if (!parsed?.token || !parsed.user?.id) return null
-    return parsed
+    return { token: parsed.token, user: { id: parsed.user.id, username: parsed.user.username, role: parsed.user.role } }
   } catch {
     return null
   }

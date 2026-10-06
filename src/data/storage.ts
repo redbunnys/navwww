@@ -1,9 +1,15 @@
 import type { AppBackground, NavData, NavItem, Settings } from '../types'
+import { DEFAULT_WALLPAPER } from '../lib/background'
 
 export const STORAGE_KEY = 'nav:data'
 export const DATA_VERSION = 1
 
-export const DEFAULT_BACKGROUND: AppBackground = { kind: 'none', value: '', mask: 35, blur: 0 }
+export const DEFAULT_BACKGROUND: AppBackground = {
+  kind: 'image',
+  value: DEFAULT_WALLPAPER,
+  mask: 35,
+  blur: 0,
+}
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',

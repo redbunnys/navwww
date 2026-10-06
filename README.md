@@ -28,14 +28,17 @@ pnpm web:deploy        # 构建并部署前端静态站点到 Cloudflare
 - 图标栏：自适应网格，三档磁贴尺寸（小 / 中 / 大），可切换显示名称或仅图标
 - 收藏：磁贴右上角星标一键收藏，侧栏「收藏」聚合所有收藏项
 - 书签搜索：匹配名称、网址、描述与拼音首字母（`gh` → GitHub），命中高亮并显示所属分类
-- 背景：侧栏「背景」可切换默认 / 渐变（8 套）/ 图片（6 张预设 + 自定义图片地址 + 本地图片）/ 纯色，支持遮罩不透明度与模糊
+- 背景：默认使用项目内置壁纸（`public/wallpaper.jpg`），侧栏「背景」可切换默认 / 渐变（8 套）/ 图片（内置壁纸 + 6 张预设 + 自定义图片地址 + 本地图片）/ 纯色，支持遮罩不透明度与模糊
 - 壁纸模式：启用背景后不再有半透明底板，图标与文字直接浮在壁纸上，标题、图标名称、侧栏文字自动转为白色并带文字阴影
 - 快捷键：`Ctrl/Cmd + K` 或 `/` 聚焦搜索框，`Esc` 清空
 - 书签管理：添加 / 编辑 / 删除 / 复制链接，图标默认自动抓取站点 `favicon.ico`，可自定义图标地址与配色
 - 更多操作：磁贴右键或左上角按钮呼出菜单
 - 主题：浅色 / 深色 / 跟随系统，跟随系统时实时响应系统切换
 - 数据：未登录时存于浏览器 `localStorage`（键名 `nav:data`），支持导出 / 导入 JSON、恢复默认
+- 导入浏览器收藏夹：支持 Chrome / Edge / Firefox 导出的收藏夹 HTML，按文件里的文件夹结构建立分类（嵌套文件夹为「父 / 子」），
+  自动跳过 `javascript:`、`place:` 等无效链接与重复网址；已登录时导入结果会一并同步到云端
 - 账号：侧栏底部登录 / 注册，用户名 + 密码，服务端 PBKDF2 加盐哈希、HMAC 签名 JWT
+- 管理员：第一个注册的账号自动成为管理员，可在账号面板里查看全部账号并开关「开放注册」
 - 云同步：登录后自动改用云端数据；若本机已有数据，会询问「合并 / 只用云端 / 用本地覆盖云端」
 - 云端存储：Cloudflare Workers + D1（SQLite），每个账号一份 JSON，单次上限 1MB
 
@@ -58,6 +61,7 @@ src/
 │  └─ usePersistentState.ts
 ├─ lib/
 │  ├─ search.ts            搜索索引、打分、拼音首字母、高亮
+│  ├─ bookmarks.ts         浏览器收藏夹 HTML 解析与合并
 │  ├─ url.ts               URL 规范化、favicon、打开与复制
 │  ├─ engines.ts           搜索引擎列表与跳转
 │  ├─ background.ts        渐变/图片预设、背景样式、图片压缩
@@ -69,7 +73,10 @@ worker/                     云端后端（Hono + Cloudflare Workers）
 ├─ src/index.ts             路由 /api/auth/*、/api/data
 ├─ src/crypto.ts            PBKDF2 密码哈希 + HMAC JWT
 ├─ src/store.ts             D1 读写
-└─ schema.sql               users / user_data 建表
+├─ schema.sql               users / user_data / app_config 建表
+└─ migrations/              已有数据库的升级脚本
+
+public/                     静态资源（默认壁纸）
 ```
 
 ## 说明
@@ -107,6 +114,14 @@ worker/                     云端后端（Hono + Cloudflare Workers）
    ```bash
    pnpm db:local    # 本地开发
    pnpm db:remote   # 线上
+   ```
+
+   已经有数据的库不要重跑建表，改用升级脚本（版本 0001 增加了 `users.role` 与 `app_config`，
+   并把最早的账号提升为管理员）：
+
+   ```bash
+   npx wrangler d1 execute navpage --local  --file=worker/migrations/0001-admin.sql
+   npx wrangler d1 execute navpage --remote --file=worker/migrations/0001-admin.sql
    ```
 
 4. 配置密钥并部署后端：

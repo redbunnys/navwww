@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Plus, SearchX, Star } from 'lucide-react'
-import { api } from './data/api'
+import { ApiError, api } from './data/api'
 import { createCloudRepository } from './data/cloudRepo'
 import { createEmptyData } from './data/defaults'
 import { mergeNavData, preserveLocalBackground } from './data/merge'
@@ -11,6 +11,7 @@ import { loadNav, saveNav } from './data/storage'
 import { cloudScope, navQueryKey, useNavQuery, useResetNav, useUpdateNav, useUpdateSettings } from './hooks/useNav'
 import { usePersistentState } from './hooks/usePersistentState'
 import { buildSearchIndex, searchDocs } from './lib/search'
+import { importBookmarkGroups, parseBookmarkHtml } from './lib/bookmarks'
 import { copyText, openUrl } from './lib/url'
 import { engineById, runSearch } from './lib/engines'
 import { migrate } from './data/storage'
@@ -99,6 +100,28 @@ export default function App() {
     media.addEventListener('change', listener)
     return () => media.removeEventListener('change', listener)
   }, [theme])
+
+  useEffect(() => {
+    const token = session?.token
+    if (!token) return
+    let alive = true
+    api
+      .me(token)
+      .then(({ user }) => {
+        if (alive) setSession({ token, user })
+      })
+      .catch((err: unknown) => {
+        if (!alive) return
+        if (err instanceof ApiError && err.status === 401) {
+          setSession(null)
+          setAccountOpen(false)
+          toast('登录已失效，已切回本机数据')
+        }
+      })
+    return () => {
+      alive = false
+    }
+  }, [session?.token])
 
   useEffect(() => {
     if (!data || data.pages.length === 0) return
@@ -326,6 +349,37 @@ export default function App() {
     })
   }, [resetNav, setActivePageId])
 
+  const importBookmarks = useCallback(
+    async (file: File) => {
+      try {
+        const groups = parseBookmarkHtml(await file.text())
+        if (groups.length === 0) throw new Error('empty')
+        let added = 0
+        let skipped = 0
+        let newPages = 0
+        update((current) => {
+          const result = importBookmarkGroups(current, groups)
+          added = result.added
+          skipped = result.skipped
+          newPages = result.newPages
+          return result.data
+        })
+        if (added === 0) {
+          toast(skipped > 0 ? `没有新增书签，${skipped} 个已存在` : '收藏夹文件里没有可导入的网址')
+          return
+        }
+        const parts = [`已导入 ${added} 个书签`]
+        if (newPages > 0) parts.push(`新增 ${newPages} 个分类`)
+        if (skipped > 0) parts.push(`跳过 ${skipped} 个重复`)
+        parts.push(getSession() ? '已同步到云端' : '登录后可同步到云端')
+        toast(parts.join('，'))
+      } catch {
+        toast('导入失败：请选择浏览器导出的收藏夹 HTML 文件')
+      }
+    },
+    [update],
+  )
+
   const handleAuthed = useCallback(async (next: Session) => {
     setSession(next)
     setAuthOpen(false)
@@ -463,6 +517,7 @@ export default function App() {
           onOpenBackground={() => setBackgroundOpen(true)}
           onExport={exportData}
           onImport={(file) => void importData(file)}
+          onImportBookmarks={(file) => void importBookmarks(file)}
           onReset={resetData}
         />
 

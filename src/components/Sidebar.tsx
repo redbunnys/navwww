@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import {
+  BookmarkPlus,
   Database,
   Download,
   Image as ImageIcon,
@@ -103,6 +104,7 @@ export function Sidebar({
   onOpenAccount,
   onExport,
   onImport,
+  onImportBookmarks,
   onReset,
 }: {
   data: NavData
@@ -119,10 +121,12 @@ export function Sidebar({
   onOpenAccount: () => void
   onExport: () => void
   onImport: (file: File) => void
+  onImportBookmarks: (file: File) => void
   onReset: () => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const bookmarkRef = useRef<HTMLInputElement>(null)
   const ThemeIcon = THEME_META[theme].icon
 
   return (
@@ -227,6 +231,16 @@ export function Sidebar({
                   type="button"
                   onClick={() => {
                     setMenuOpen(false)
+                    bookmarkRef.current?.click()
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-neutral-700 transition hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-white/10"
+                >
+                  <BookmarkPlus className="h-3.5 w-3.5" /> 导入浏览器收藏夹
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false)
                     fileRef.current?.click()
                   }}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-neutral-700 transition hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-white/10"
@@ -254,6 +268,17 @@ export function Sidebar({
             onChange={(event) => {
               const file = event.target.files?.[0]
               if (file) onImport(file)
+              event.target.value = ''
+            }}
+          />
+          <input
+            ref={bookmarkRef}
+            type="file"
+            accept="text/html,.html,.htm"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) onImportBookmarks(file)
               event.target.value = ''
             }}
           />

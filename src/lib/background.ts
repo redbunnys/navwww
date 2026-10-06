@@ -29,7 +29,11 @@ export interface PhotoPreset {
   thumb: string
 }
 
+export const DEFAULT_WALLPAPER = '/wallpaper.jpg'
+export const DEFAULT_WALLPAPER_THUMB = '/wallpaper-thumb.jpg'
+
 export const PHOTOS: PhotoPreset[] = [
+  { id: 'default', name: '默认', url: DEFAULT_WALLPAPER, thumb: DEFAULT_WALLPAPER_THUMB },
   { id: 'p1', name: '山脉', url: 'https://picsum.photos/seed/navpage-1/2400/1600', thumb: 'https://picsum.photos/seed/navpage-1/320/200' },
   { id: 'p2', name: '海岸', url: 'https://picsum.photos/seed/navpage-2/2400/1600', thumb: 'https://picsum.photos/seed/navpage-2/320/200' },
   { id: 'p3', name: '城市', url: 'https://picsum.photos/seed/navpage-3/2400/1600', thumb: 'https://picsum.photos/seed/navpage-3/320/200' },

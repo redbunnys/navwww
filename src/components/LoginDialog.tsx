@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../data/api'
+import type { AppConfig } from '../data/api'
 import { getApiBase, setApiBase } from '../data/session'
 import type { Session } from '../data/session'
 import { Button, Field, Modal, inputClass } from './Modal'
@@ -19,18 +20,38 @@ export function LoginDialog({
   const [server, setServer] = useState(getApiBase())
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [config, setConfig] = useState<AppConfig | null>(null)
+  const registerClosed = config !== null && config.hasAdmin && !config.allowRegister
 
   useEffect(() => {
     if (!open) return
     setError('')
     setBusy(false)
     setServer(getApiBase())
+    let alive = true
+    api
+      .getConfig()
+      .then((next) => {
+        if (!alive) return
+        setConfig(next)
+        if (next.hasAdmin && !next.allowRegister) setMode('login')
+      })
+      .catch(() => {
+        if (alive) setConfig(null)
+      })
+    return () => {
+      alive = false
+    }
   }, [open])
 
   const submit = async () => {
     if (busy) return
     if (!username.trim() || !password) {
       setError('请输入用户名和密码')
+      return
+    }
+    if (mode === 'register' && registerClosed) {
+      setError('管理员已关闭注册')
       return
     }
     setBusy(true)
@@ -62,7 +83,9 @@ export function LoginDialog({
     >
       <div className="space-y-4">
         <div className="flex overflow-hidden rounded-full border border-black/5 bg-neutral-100/80 p-0.5 text-xs dark:border-white/10 dark:bg-white/5">
-          {(['login', 'register'] as const).map((item) => (
+          {(['login', 'register'] as const)
+            .filter((item) => item === 'login' || !registerClosed)
+            .map((item) => (
             <button
               key={item}
               type="button"
@@ -78,8 +101,20 @@ export function LoginDialog({
             >
               {item === 'login' ? '登录' : '注册'}
             </button>
-          ))}
+            ))}
         </div>
+
+        {registerClosed ? (
+          <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            管理员已关闭注册，需要账号请联系管理员
+          </p>
+        ) : null}
+
+        {config && !config.hasAdmin ? (
+          <p className="rounded-lg bg-blue-500/10 px-3 py-2 text-xs text-blue-700 dark:text-blue-400">
+            当前还没有任何账号，第一个注册的账号将成为管理员
+          </p>
+        ) : null}
 
         <Field label="用户名">
           <input
