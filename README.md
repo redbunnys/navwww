@@ -9,6 +9,13 @@ pnpm install
 pnpm dev        # http://localhost:5173
 pnpm build      # 类型检查 + 生产构建到 dist/
 pnpm preview    # 预览构建产物
+
+# 云端后端（Cloudflare Workers + D1）
+pnpm worker:dev        # 本地后端 http://127.0.0.1:8787
+pnpm worker:typecheck  # 后端类型检查
+pnpm db:local          # 本地 D1 建表
+pnpm db:remote         # 线上 D1 建表
+pnpm worker:deploy     # 部署后端到 Cloudflare
 ```
 
 ## 功能
@@ -26,7 +33,10 @@ pnpm preview    # 预览构建产物
 - 书签管理：添加 / 编辑 / 删除 / 复制链接，图标默认自动抓取站点 `favicon.ico`，可自定义图标地址与配色
 - 更多操作：磁贴右键或左上角按钮呼出菜单
 - 主题：浅色 / 深色 / 跟随系统，跟随系统时实时响应系统切换
-- 数据：全部存于浏览器 `localStorage`（键名 `nav:data`），支持导出 / 导入 JSON、恢复默认
+- 数据：未登录时存于浏览器 `localStorage`（键名 `nav:data`），支持导出 / 导入 JSON、恢复默认
+- 账号：侧栏底部登录 / 注册，用户名 + 密码，服务端 PBKDF2 加盐哈希、HMAC 签名 JWT
+- 云同步：登录后自动改用云端数据；若本机已有数据，会询问「合并 / 只用云端 / 用本地覆盖云端」
+- 云端存储：Cloudflare Workers + D1（SQLite），每个账号一份 JSON，单次上限 1MB
 
 ## 结构
 
@@ -37,7 +47,11 @@ src/
 ├─ data/
 │  ├─ repo.ts              仓储接口 + localStorage 实现
 │  ├─ storage.ts           读写、默认设置、版本迁移
-│  └─ defaults.ts          内置分类与书签种子数据
+│  ├─ defaults.ts          内置分类与书签种子数据
+│  ├─ session.ts           登录状态与 API 地址
+│  ├─ api.ts               云端接口封装
+│  ├─ cloudRepo.ts         云端仓储实现（写入自动合并）
+│  └─ merge.ts             本机与云端数据的合并 / 替换策略
 ├─ hooks/
 │  ├─ useNav.ts            TanStack Query 封装与写入
 │  └─ usePersistentState.ts
@@ -47,16 +61,56 @@ src/
 │  ├─ engines.ts           搜索引擎列表与跳转
 │  ├─ background.ts        渐变/图片预设、背景样式、图片压缩
 │  └─ constants.ts         调色板、磁贴尺寸
-└─ components/             侧栏、居中搜索、背景层、磁贴、对话框、Toast
+├─ components/             侧栏、居中搜索、背景层、磁贴、对话框、Toast
+│  └─ 账号相关              LoginDialog、SyncDialog、AccountDialog
+
+worker/                     云端后端（Hono + Cloudflare Workers）
+├─ src/index.ts             路由 /api/auth/*、/api/data
+├─ src/crypto.ts            PBKDF2 密码哈希 + HMAC JWT
+├─ src/store.ts             D1 读写
+└─ schema.sql               users / user_data 建表
 ```
 
 ## 说明
 
 - 预设图片来自 `picsum.photos`，需要联网才能显示；本地图片会先压缩到最长边 2400px 再以 data URL 存进 `localStorage`
 - `localStorage` 单站点容量约 5MB，上传图片过多时会保存失败，重要数据建议先导出备份
+- 本地上传的图片壁纸（data URL）不会上传云端，只保留在本机；换设备登录后云端数据里没有这张壁纸
+- 云端接口地址：开发默认 `http://127.0.0.1:8787`，线上在 `.env` 里设置 `VITE_API_BASE`
 
-## 换成 SQLite 后端
+## 云端同步与部署（Cloudflare）
 
-UI 只依赖 `src/data/repo.ts` 里的 `NavRepository` 接口（`load` / `save` / `reset`）。
-新增一个调用后端的实现并替换 `src/hooks/useNav.ts` 中的 `localRepository` 即可，
-组件与查询键（`['nav']`）无需改动。
+后端是 Cloudflare Worker（Hono 路由）+ D1（SQLite）。UI 只依赖 `src/data/repo.ts` 的 `NavRepository`
+接口（`load` / `save` / `reset`），未登录用 `localRepository`，登录后切到 `createCloudRepository`，组件无需改动。
+
+1. 登录 Cloudflare（首次会打开浏览器授权）：
+
+   ```bash
+   npx wrangler login
+   ```
+
+2. 创建 D1 数据库，把输出的 `database_id` 填进 `wrangler.toml`：
+
+   ```bash
+   npx wrangler d1 create navpage
+   ```
+
+3. 建表（本地 / 线上）：
+
+   ```bash
+   pnpm db:local    # 本地开发
+   pnpm db:remote   # 线上
+   ```
+
+4. 配置密钥并部署后端：
+
+   ```bash
+   npx wrangler secret put JWT_SECRET   # 输入一串随机长字符串
+   pnpm worker:deploy
+   ```
+
+5. 前端：在项目根目录建 `.env`，把 `VITE_API_BASE` 指向 Worker 地址（如
+   `https://navpage-api.<你的账号>.workers.dev`），重新 `pnpm build`，把 `dist/` 部署到静态托管
+   （Cloudflare Pages 也可以）。跨域需在 `wrangler.toml` 的 `ALLOWED_ORIGINS` 里加上前端域名。
+
+本地全流程调试：`pnpm worker:dev` 起后端，另开终端 `pnpm dev` 起前端，即可注册登录。

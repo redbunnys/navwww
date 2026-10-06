@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Plus, SearchX, Star } from 'lucide-react'
-import { useNavQuery, useResetNav, useUpdateNav, useUpdateSettings } from './hooks/useNav'
+import { api } from './data/api'
+import { createCloudRepository } from './data/cloudRepo'
+import { createEmptyData } from './data/defaults'
+import { mergeNavData, preserveLocalBackground } from './data/merge'
+import { getSession, setSession, useSession } from './data/session'
+import type { Session } from './data/session'
+import { loadNav, saveNav } from './data/storage'
+import { cloudScope, navQueryKey, useNavQuery, useResetNav, useUpdateNav, useUpdateSettings } from './hooks/useNav'
 import { usePersistentState } from './hooks/usePersistentState'
 import { buildSearchIndex, searchDocs } from './lib/search'
 import { copyText, openUrl } from './lib/url'
@@ -18,6 +26,10 @@ import { BookmarkDialog } from './components/BookmarkDialog'
 import type { BookmarkFormValues } from './components/BookmarkDialog'
 import { PageDialog } from './components/PageDialog'
 import { Toaster, toast } from './components/Toaster'
+import { LoginDialog } from './components/LoginDialog'
+import { SyncDialog } from './components/SyncDialog'
+import type { SyncMode } from './components/SyncDialog'
+import { AccountDialog } from './components/AccountDialog'
 
 const ACTIVE_PAGE_KEY = 'nav:active-page'
 const TILE_SIZE_ORDER: Settings['tileSize'][] = ['sm', 'md', 'lg']
@@ -54,7 +66,9 @@ function dropItem(data: NavData, id: string): NavData['items'] {
 }
 
 export default function App() {
-  const { data } = useNavQuery()
+  const { data, isError, error, refetch } = useNavQuery()
+  const queryClient = useQueryClient()
+  const session = useSession()
   const update = useUpdateNav()
   const updateSettings = useUpdateSettings()
   const resetNav = useResetNav()
@@ -63,6 +77,9 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [backgroundOpen, setBackgroundOpen] = useState(false)
+  const [authOpen, setAuthOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
+  const [sync, setSync] = useState<{ cloud: NavData | null; busy: SyncMode | null } | null>(null)
   const [bookmarkDialog, setBookmarkDialog] = useState<{ open: boolean; item: NavItem | null; pageId: string }>({
     open: false,
     item: null,
@@ -309,7 +326,102 @@ export default function App() {
     })
   }, [resetNav, setActivePageId])
 
+  const handleAuthed = useCallback(async (next: Session) => {
+    setSession(next)
+    setAuthOpen(false)
+    const local = loadNav()
+    try {
+      const { data: cloud } = await api.loadData(next.token)
+      if (!local || local.pages.length === 0) {
+        toast(cloud ? '已登录，正在使用云端数据' : '已登录，云端暂无数据')
+        return
+      }
+      setSync({ cloud, busy: null })
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '读取云端数据失败')
+    }
+  }, [])
+
+  const applySync = useCallback(
+    async (mode: SyncMode) => {
+      const current = getSession()
+      if (!current) return
+      setSync((prev) => (prev ? { ...prev, busy: mode } : prev))
+      const local = loadNav() ?? createEmptyData()
+      const cloud = sync?.cloud ?? null
+      try {
+        let result: NavData
+        if (mode === 'merge') {
+          result = mergeNavData(local, cloud ?? createEmptyData())
+        } else if (mode === 'cloud') {
+          if (!cloud) throw new Error('云端还没有数据')
+          result = preserveLocalBackground(cloud, local)
+        } else {
+          result = local
+        }
+        await createCloudRepository(() => current.token).save(result)
+        saveNav(result)
+        queryClient.setQueryData(navQueryKey(cloudScope(current.user.id)), result)
+        setSync(null)
+        toast(
+          mode === 'merge' ? '已合并并同步到云端' : mode === 'cloud' ? '已改用云端数据' : '已用本地数据覆盖云端',
+        )
+      } catch (err) {
+        toast(err instanceof Error ? err.message : '同步失败')
+        setSync((prev) => (prev ? { ...prev, busy: null } : prev))
+      }
+    },
+    [queryClient, sync],
+  )
+
+  const logout = useCallback(() => {
+    if (!window.confirm('退出登录？将切回本机数据，本机数据不会被删除。')) return
+    setSession(null)
+    setAccountOpen(false)
+    toast('已退出登录，正在使用本机数据')
+  }, [])
+
+  const uploadNow = useCallback(async () => {
+    const current = getSession()
+    if (!current || !data) return
+    try {
+      await createCloudRepository(() => current.token).save(data)
+      toast('已上传到云端')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : '上传失败')
+    }
+  }, [data])
+
   if (!data || !settings) {
+    if (isError) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+          <p className="text-sm font-semibold">数据加载失败</p>
+          <p className="max-w-md text-xs text-neutral-400">
+            {error instanceof Error ? error.message : '请检查网络或服务器地址'}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              className="rounded-lg bg-blue-600 px-3.5 py-1.5 text-sm font-medium text-white transition hover:bg-blue-500"
+            >
+              重试
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSession(null)
+                void refetch()
+              }}
+              className="rounded-lg bg-neutral-100 px-3.5 py-1.5 text-sm font-medium text-neutral-700 transition hover:bg-neutral-200 dark:bg-white/10 dark:text-neutral-200"
+            >
+              退出登录用本机数据
+            </button>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="flex h-full items-center justify-center">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-300 border-t-blue-500" />
@@ -336,6 +448,8 @@ export default function App() {
           favoriteCount={favorites.length}
           counts={counts}
           theme={settings.theme}
+          session={session}
+          onOpenAccount={() => (session ? setAccountOpen(true) : setAuthOpen(true))}
           onSelect={(id) => {
             setActivePageId(id)
             setQuery('')
@@ -467,6 +581,27 @@ export default function App() {
         background={settings.background}
         onChange={(next) => updateSettings({ background: next })}
         onClose={() => setBackgroundOpen(false)}
+      />
+
+      <LoginDialog open={authOpen} onClose={() => setAuthOpen(false)} onAuthed={(next) => void handleAuthed(next)} />
+
+      {session && accountOpen ? (
+        <AccountDialog
+          open
+          session={session}
+          updatedAt={data.updatedAt}
+          onUpload={() => void uploadNow()}
+          onLogout={logout}
+          onClose={() => setAccountOpen(false)}
+        />
+      ) : null}
+
+      <SyncDialog
+        open={sync !== null}
+        hasCloudData={Boolean(sync?.cloud)}
+        busy={sync?.busy ?? null}
+        onChoose={(mode) => void applySync(mode)}
+        onClose={() => setSync(null)}
       />
 
       {menu ? <ContextMenu state={menu} onAction={handleMenuAction} onClose={() => setMenu(null)} /> : null}

@@ -10,11 +10,13 @@ import {
   RotateCcw,
   Star,
   Sun,
+  UserRound,
   Upload,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { FAVORITES_PAGE_ID } from '../types'
 import type { NavData, NavPage, Settings } from '../types'
+import type { Session } from '../data/session'
 import { pageIcon } from './icons'
 
 const THEME_META: Record<Settings['theme'], { icon: LucideIcon; label: string }> = {
@@ -92,11 +94,13 @@ export function Sidebar({
   favoriteCount,
   counts,
   theme,
+  session,
   onSelect,
   onAddPage,
   onEditPage,
   onCycleTheme,
   onOpenBackground,
+  onOpenAccount,
   onExport,
   onImport,
   onReset,
@@ -106,11 +110,13 @@ export function Sidebar({
   favoriteCount: number
   counts: Record<string, number>
   theme: Settings['theme']
+  session: Session | null
   onSelect: (id: string) => void
   onAddPage: () => void
   onEditPage: (page: NavPage) => void
   onCycleTheme: () => void
   onOpenBackground: () => void
+  onOpenAccount: () => void
   onExport: () => void
   onImport: (file: File) => void
   onReset: () => void
@@ -156,6 +162,26 @@ export function Sidebar({
           </button>
         </div>
       </nav>
+
+      <button
+        type="button"
+        title={session ? `账号：${session.user.username}` : '登录云端账号'}
+        onClick={onOpenAccount}
+        className="rail-item flex w-full shrink-0 flex-col items-center gap-1 rounded-xl px-1 py-2 transition hover:bg-white/70 dark:hover:bg-white/5"
+      >
+        <span className="rail-item-icon flex h-9 w-9 items-center justify-center text-neutral-500 dark:text-neutral-400">
+          {session ? (
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-500 text-[11px] font-semibold text-white">
+              {session.user.username.slice(0, 1).toUpperCase()}
+            </span>
+          ) : (
+            <UserRound className="h-[18px] w-[18px]" />
+          )}
+        </span>
+        <span className="rail-label w-full truncate text-center text-[11px] leading-4 text-neutral-500 dark:text-neutral-400">
+          {session ? session.user.username : '登录'}
+        </span>
+      </button>
 
       <div className="flex w-full shrink-0 items-center justify-center gap-0.5 border-t border-black/5 pt-2 dark:border-white/5">
         <button

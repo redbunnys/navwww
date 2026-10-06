@@ -1,0 +1,14 @@
+name = "navpage-api"
+main = "worker/src/index.ts"
+compatibility_date = "2026-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "navpage"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+[vars]
+ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+
+# JWT_SECRET 不要写进本文件，用下面的命令配置：
+#   npx wrangler secret put JWT_SECRET

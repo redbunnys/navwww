@@ -96,3 +96,7 @@ export function createDefaultData(): NavData {
   }
   return { version: DATA_VERSION, pages, items, settings: { ...DEFAULT_SETTINGS }, updatedAt: Date.now() }
 }
+
+export function createEmptyData(): NavData {
+  return { version: DATA_VERSION, pages: [], items: {}, settings: { ...DEFAULT_SETTINGS }, updatedAt: 0 }
+}

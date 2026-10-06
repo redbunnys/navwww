@@ -1,28 +1,54 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { localRepository } from '../data/repo'
+import { createCloudRepository } from '../data/cloudRepo'
+import { useSession } from '../data/session'
 import type { NavData, Settings } from '../types'
 
-export const NAV_KEY = ['nav'] as const
+export const LOCAL_SCOPE = 'local'
+
+export function cloudScope(userId: string): string {
+  return `cloud:${userId}`
+}
+
+export function navQueryKey(scope: string) {
+  return ['nav', scope] as const
+}
+
+export function useNavScope(): string {
+  const session = useSession()
+  return session ? cloudScope(session.user.id) : LOCAL_SCOPE
+}
+
+function useRepository() {
+  const session = useSession()
+  return useMemo(
+    () => (session ? createCloudRepository(() => session.token) : localRepository),
+    [session],
+  )
+}
 
 export function useNavQuery() {
-  return useQuery({
-    queryKey: NAV_KEY,
-    queryFn: () => localRepository.load(),
-  })
+  const repository = useRepository()
+  const scope = useNavScope()
+  return useQuery({ queryKey: navQueryKey(scope), queryFn: () => repository.load() })
 }
 
 export function useUpdateNav() {
   const queryClient = useQueryClient()
+  const repository = useRepository()
+  const scope = useNavScope()
+
   return useCallback(
     (recipe: (data: NavData) => NavData) => {
-      const current = queryClient.getQueryData<NavData>(NAV_KEY)
+      const key = navQueryKey(scope)
+      const current = queryClient.getQueryData<NavData>(key)
       if (!current) return
       const next: NavData = { ...recipe(current), updatedAt: Date.now() }
-      queryClient.setQueryData(NAV_KEY, next)
-      void localRepository.save(next)
+      queryClient.setQueryData(key, next)
+      void repository.save(next)
     },
-    [queryClient],
+    [queryClient, repository, scope],
   )
 }
 
@@ -38,8 +64,11 @@ export function useUpdateSettings() {
 
 export function useResetNav() {
   const queryClient = useQueryClient()
+  const repository = useRepository()
+  const scope = useNavScope()
+
   return useCallback(async () => {
-    const data = await localRepository.reset()
-    queryClient.setQueryData(NAV_KEY, data)
-  }, [queryClient])
+    const data = await repository.reset()
+    queryClient.setQueryData(navQueryKey(scope), data)
+  }, [queryClient, repository, scope])
 }
