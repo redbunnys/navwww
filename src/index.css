@@ -1,0 +1,175 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-neutral-100 text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100;
+    background-image: radial-gradient(60rem 40rem at 15% -10%, rgb(59 130 246 / 0.12), transparent 70%),
+      radial-gradient(50rem 35rem at 100% 0%, rgb(168 85 247 / 0.1), transparent 65%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    @apply bg-blue-500/25;
+  }
+}
+
+.scroll-slim {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(0 0 0 / 0.14) transparent;
+  overscroll-behavior: contain;
+}
+
+.scroll-slim::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-slim::-webkit-scrollbar-thumb {
+  background-color: rgb(0 0 0 / 0.14);
+  background-clip: content-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+.scroll-slim:hover::-webkit-scrollbar-thumb {
+  background-color: rgb(0 0 0 / 0.26);
+}
+
+.scroll-slim::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(0 0 0 / 0.42);
+}
+
+.scroll-slim::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.dark .scroll-slim {
+  scrollbar-color: rgb(255 255 255 / 0.16) transparent;
+}
+
+.dark .scroll-slim::-webkit-scrollbar-thumb {
+  background-color: rgb(255 255 255 / 0.16);
+}
+
+.dark .scroll-slim:hover::-webkit-scrollbar-thumb {
+  background-color: rgb(255 255 255 / 0.28);
+}
+
+.dark .scroll-slim::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(255 255 255 / 0.45);
+}
+
+.wallpaper .wp-strong {
+  color: rgb(255 255 255 / 0.96);
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.45);
+}
+
+.wallpaper .wp-soft {
+  color: rgb(255 255 255 / 0.72);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+}
+
+.wallpaper .wp-hover:hover {
+  background-color: rgb(255 255 255 / 0.14);
+  box-shadow: none;
+}
+
+.wallpaper .wp-dashed {
+  border-color: rgb(255 255 255 / 0.45);
+  color: rgb(255 255 255 / 0.85);
+}
+
+.wallpaper .wp-dashed:hover {
+  border-color: rgb(255 255 255 / 0.85);
+  color: #fff;
+}
+
+.wallpaper .search-shell {
+  background-color: rgb(255 255 255 / 0.18);
+  border-color: rgb(255 255 255 / 0.28);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.2);
+}
+
+.wallpaper .search-shell input {
+  color: #fff;
+}
+
+.wallpaper .search-shell input::placeholder {
+  color: rgb(255 255 255 / 0.62);
+}
+
+.wallpaper .search-shell .wp-ghost {
+  color: rgb(255 255 255 / 0.9);
+}
+
+.wallpaper .search-shell .wp-ghost:hover {
+  background-color: rgb(255 255 255 / 0.2);
+  color: #fff;
+}
+
+.wallpaper .search-shell .wp-divider {
+  background-color: rgb(255 255 255 / 0.32);
+}
+
+.wallpaper .search-shell .wp-kbd {
+  background-color: rgb(255 255 255 / 0.16);
+  border-color: rgb(255 255 255 / 0.28);
+  color: rgb(255 255 255 / 0.72);
+}
+
+.wallpaper .rail-item {
+  color: rgb(255 255 255 / 0.9);
+}
+
+.wallpaper .rail-item:hover {
+  background-color: rgb(255 255 255 / 0.14);
+}
+
+.wallpaper .rail-item-icon {
+  color: rgb(255 255 255 / 0.9);
+}
+
+.wallpaper .rail-label {
+  color: rgb(255 255 255 / 0.85);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+}
+
+.wallpaper .rail-foot {
+  color: rgb(255 255 255 / 0.85);
+}
+
+.wallpaper .rail-foot:hover {
+  background-color: rgb(255 255 255 / 0.18);
+  color: #fff;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-pop {
+  animation: pop-in 0.16s ease-out;
+}

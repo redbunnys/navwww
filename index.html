@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>导航页</title>
+    <meta name="description" content="可收藏、可搜索的个人导航页" />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('nav:theme') || 'system'
+          var dark =
+            saved === 'dark' ||
+            (saved === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) document.documentElement.classList.add('dark')
+        } catch (e) {}
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
