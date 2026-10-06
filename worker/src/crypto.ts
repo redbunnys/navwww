@@ -24,7 +24,8 @@ function base64Url(bytes: Uint8Array): string {
   return toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-const ITERATIONS = 150000
+// Cloudflare Workers 的 PBKDF2 最多支持 100000 次迭代，超过会直接抛错
+const ITERATIONS = 100000
 
 async function derive(password: string, salt: Uint8Array): Promise<Uint8Array> {
   const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits'])

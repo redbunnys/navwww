@@ -5,10 +5,15 @@ compatibility_date = "2026-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "navpage"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "256e3cab-5c3f-4f64-86ab-b7e1c621b3d5"
+
+# workers.dev 在部分网络下不可达，这里同时绑定自有域名
+[[routes]]
+pattern = "nav-api.okrust.com"
+custom_domain = true
 
 [vars]
-ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+ALLOWED_ORIGINS = "https://nav.okrust.com,http://localhost:5173,http://127.0.0.1:5173"
 
 # JWT_SECRET 不要写进本文件，用下面的命令配置：
 #   npx wrangler secret put JWT_SECRET

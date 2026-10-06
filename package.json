@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy",
+    "web:deploy": "pnpm build && wrangler deploy -c wrangler.web.toml",
     "worker:typecheck": "tsc -p worker/tsconfig.json --noEmit",
     "db:local": "wrangler d1 execute navpage --local --file=worker/schema.sql",
     "db:remote": "wrangler d1 execute navpage --remote --file=worker/schema.sql"

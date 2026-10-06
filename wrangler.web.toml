@@ -1,0 +1,11 @@
+# 前端静态站点：Cloudflare Workers 静态资源（Workers 上的 Pages）
+name = "navpage-web"
+compatibility_date = "2026-01-01"
+
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+
+[[routes]]
+pattern = "nav.okrust.com"
+custom_domain = true

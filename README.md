@@ -16,6 +16,7 @@ pnpm worker:typecheck  # 后端类型检查
 pnpm db:local          # 本地 D1 建表
 pnpm db:remote         # 线上 D1 建表
 pnpm worker:deploy     # 部署后端到 Cloudflare
+pnpm web:deploy        # 构建并部署前端静态站点到 Cloudflare
 ```
 
 ## 功能
@@ -76,12 +77,18 @@ worker/                     云端后端（Hono + Cloudflare Workers）
 - 预设图片来自 `picsum.photos`，需要联网才能显示；本地图片会先压缩到最长边 2400px 再以 data URL 存进 `localStorage`
 - `localStorage` 单站点容量约 5MB，上传图片过多时会保存失败，重要数据建议先导出备份
 - 本地上传的图片壁纸（data URL）不会上传云端，只保留在本机；换设备登录后云端数据里没有这张壁纸
-- 云端接口地址：开发默认 `http://127.0.0.1:8787`，线上在 `.env` 里设置 `VITE_API_BASE`
+- 云端接口地址：开发默认 `http://127.0.0.1:8787`，线上由 `.env.production` 的 `VITE_API_BASE` 决定
 
 ## 云端同步与部署（Cloudflare）
 
 后端是 Cloudflare Worker（Hono 路由）+ D1（SQLite）。UI 只依赖 `src/data/repo.ts` 的 `NavRepository`
 接口（`load` / `save` / `reset`），未登录用 `localRepository`，登录后切到 `createCloudRepository`，组件无需改动。
+
+线上地址：前端 <https://nav.okrust.com>，接口 <https://nav-api.okrust.com>。
+
+> `*.workers.dev` 在部分网络下被 DNS 污染、无法访问，所以两个服务都绑定了自有域名；
+> 绑定的域名会自动签发证书，无需额外配置。若要换域名，改 `wrangler.toml` 的 `[[routes]]`
+> 与 `wrangler.web.toml` 的 `[[routes]]`，并同步 `ALLOWED_ORIGINS` 和 `.env.production`。
 
 1. 登录 Cloudflare（首次会打开浏览器授权）：
 
@@ -109,8 +116,15 @@ worker/                     云端后端（Hono + Cloudflare Workers）
    pnpm worker:deploy
    ```
 
-5. 前端：在项目根目录建 `.env`，把 `VITE_API_BASE` 指向 Worker 地址（如
-   `https://navpage-api.<你的账号>.workers.dev`），重新 `pnpm build`，把 `dist/` 部署到静态托管
-   （Cloudflare Pages 也可以）。跨域需在 `wrangler.toml` 的 `ALLOWED_ORIGINS` 里加上前端域名。
+5. 前端：`.env.production` 里的 `VITE_API_BASE` 指向接口域名（构建时写进产物，`pnpm dev` 不受影响），
+   然后 `pnpm web:deploy` 构建并部署静态站点（`wrangler.web.toml` 里的静态资源 Worker）。
+   跨域需在 `wrangler.toml` 的 `ALLOWED_ORIGINS` 里加上前端域名，改完重新 `pnpm worker:deploy`。
 
 本地全流程调试：`pnpm worker:dev` 起后端，另开终端 `pnpm dev` 起前端，即可注册登录。
+
+### 平台限制
+
+- Cloudflare Workers 的 PBKDF2 最多 10 万次迭代（`worker/src/crypto.ts` 的 `ITERATIONS`），
+  写成 15 万在线上会直接抛错返回 500，本地 `workerd` 不校验所以测不出来
+- 单个账号数据上限 1MB，超出会返回 413
+- `wrangler tail`（WebSocket）在受限网络下可能连不上，排错可改用 `npx wrangler deployments list` 与线上接口自测
